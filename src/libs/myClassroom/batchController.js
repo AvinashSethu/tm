@@ -136,23 +136,28 @@ export async function enrollStudent(userID, batchCode, rollNo, tag) {
 }
 
 export async function getUserBatches(userID) {
-  const batchResponse = await dynamoDB.send(
-    new QueryCommand({
-      TableName: MASTER_TABLE,
-      IndexName: MASTER_INDEX_TABLE,
-      KeyConditionExpression: "#gsi1pk = :pk",
-      FilterExpression: "userID = :userID",
-      ExpressionAttributeNames: { "#gsi1pk": "GSI1-pKey" },
-      ExpressionAttributeValues: {
-        ":pk": "STUDENT_BATCHES",
-        ":userID": userID,
-      },
-    })
-  );
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const batchResponse = await dynamoDB.send(
+      new QueryCommand({
+        TableName: MASTER_TABLE,
+        KeyConditionExpression: "pKey = :pk AND begins_with(sKey, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": `STUDENT_BATCH#${userID}`,
+          ":sk": "STUDENT_BATCH@",
+        },
+        ExclusiveStartKey,
+      })
+    );
+    items.push(...(batchResponse.Items || []));
+    ExclusiveStartKey = batchResponse.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
   return {
     success: true,
     message: "Batch fetched successfully",
-    data: batchResponse.Items.map((item) => ({
+    data: items.map((item) => ({
       ...item,
       pKey: undefined,
       sKey: undefined,
@@ -186,26 +191,30 @@ export async function getStudentEnrolledBatch(userID, batchID) {
 }
 
 export async function getTotalClassroomJoins(userID) {
-  const response = await dynamoDB.send(
-    new QueryCommand({
-      TableName: MASTER_TABLE,
-      IndexName: MASTER_INDEX_TABLE,
-      KeyConditionExpression: "#gsi1pk = :pk",
-      FilterExpression: "userID = :userID",
-      ExpressionAttributeNames: { "#gsi1pk": "GSI1-pKey" },
-      ExpressionAttributeValues: {
-        ":pk": "STUDENT_BATCHES",
-        ":userID": userID,
-      },
-      Select: "COUNT",
-    })
-  );
+  let count = 0;
+  let ExclusiveStartKey;
+  do {
+    const response = await dynamoDB.send(
+      new QueryCommand({
+        TableName: MASTER_TABLE,
+        KeyConditionExpression: "pKey = :pk AND begins_with(sKey, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": `STUDENT_BATCH#${userID}`,
+          ":sk": "STUDENT_BATCH@",
+        },
+        Select: "COUNT",
+        ExclusiveStartKey,
+      })
+    );
+    count += response.Count || 0;
+    ExclusiveStartKey = response.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
 
   return {
     success: true,
     message: "Total classroom joins for user fetched successfully",
     data: {
-      count: response.Count || 0,
+      count,
     },
   };
 }
