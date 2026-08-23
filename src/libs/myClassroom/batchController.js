@@ -118,16 +118,33 @@ export async function enrollStudent(userID, batchCode, rollNo, tag) {
           sKey: "BATCHES",
         },
         UpdateExpression: "ADD enrolledStudentCount :inc",
-        ExpressionAttributeValues: {
-          ":inc": 1,
-        },
+        // The capacity check above is read-then-write; two simultaneous
+        // joins can both pass it. Enforce capacity atomically here.
+        ...(typeof batch.capacity === "number"
+          ? {
+              ConditionExpression:
+                "attribute_not_exists(enrolledStudentCount) OR enrolledStudentCount < :cap",
+              ExpressionAttributeValues: { ":inc": 1, ":cap": batch.capacity },
+            }
+          : { ExpressionAttributeValues: { ":inc": 1 } }),
       },
     },
   ];
 
-  await dynamoDB.send(
-    new TransactWriteCommand({ TransactItems: transactItems })
-  );
+  try {
+    await dynamoDB.send(
+      new TransactWriteCommand({ TransactItems: transactItems })
+    );
+  } catch (err) {
+    const reasons = err.CancellationReasons || [];
+    if (reasons[0]?.Code === "ConditionalCheckFailed") {
+      return { success: false, message: "You are already enrolled in this batch" };
+    }
+    if (reasons[1]?.Code === "ConditionalCheckFailed") {
+      return { success: false, message: "Batch is full" };
+    }
+    throw err;
+  }
 
   return {
     success: true,
@@ -263,7 +280,7 @@ export async function leaveBatch(userID, batchID) {
   } catch (err) {
     console.error("Error in leaveBatch:", err);
     if (
-      err.message.includes("ConditionalCheckFailed") ||
+      err.message?.includes("ConditionalCheckFailed") ||
       (err.CancellationReasons &&
         err.CancellationReasons.some(
           (r) => r.Code === "ConditionalCheckFailed"
@@ -308,7 +325,7 @@ export async function updateBatchRollNo(userID, batchID, rollNo) {
     return { success: true, message: "Roll number updated successfully" };
   } catch (err) {
     if (
-      err.message.includes("ConditionalCheckFailed") ||
+      err.message?.includes("ConditionalCheckFailed") ||
       (err.CancellationReasons &&
         err.CancellationReasons.some(
           (r) => r.Code === "ConditionalCheckFailed"
