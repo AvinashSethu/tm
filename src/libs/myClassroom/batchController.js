@@ -9,22 +9,36 @@ const MASTER_TABLE = `${process.env.AWS_DB_NAME}master`;
 const MASTER_INDEX_TABLE = "masterTableIndex";
 const USER_TABLE = `${process.env.AWS_DB_NAME}users`;
 
-export async function getBatchByCode(batchCode) {
-  const batchResponse = await dynamoDB.send(
-    new QueryCommand({
-      TableName: MASTER_TABLE,
-      IndexName: MASTER_INDEX_TABLE,
-      KeyConditionExpression: "#gsi1pk = :pk",
-      FilterExpression: "batchCode = :batchCode",
-      ExpressionAttributeNames: { "#gsi1pk": "GSI1-pKey" },
-      ExpressionAttributeValues: {
-        ":pk": "BATCHES",
-        ":batchCode": batchCode,
-      },
-    })
-  );
+// Paginates the BATCHES partition until the code matches — a FilterExpression
+// only applies within each 1MB page, so a single-page query silently misses
+// batches once the partition outgrows one page.
+async function queryBatchByCode(batchCode) {
+  let ExclusiveStartKey;
+  do {
+    const batchResponse = await dynamoDB.send(
+      new QueryCommand({
+        TableName: MASTER_TABLE,
+        IndexName: MASTER_INDEX_TABLE,
+        KeyConditionExpression: "#gsi1pk = :pk",
+        FilterExpression: "batchCode = :batchCode",
+        ExpressionAttributeNames: { "#gsi1pk": "GSI1-pKey" },
+        ExpressionAttributeValues: {
+          ":pk": "BATCHES",
+          ":batchCode": batchCode,
+        },
+        ExclusiveStartKey,
+      })
+    );
+    if (batchResponse.Items?.length) {
+      return batchResponse.Items[0];
+    }
+    ExclusiveStartKey = batchResponse.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return null;
+}
 
-  const batch = batchResponse.Items?.[0];
+export async function getBatchByCode(batchCode) {
+  const batch = await queryBatchByCode(batchCode);
   if (!batch) {
     return { success: false, message: "Batch not found" };
   }
@@ -44,21 +58,7 @@ export async function enrollStudent(userID, batchCode, rollNo, tag) {
   const now = Date.now();
 
   // 1) Look up the batch by code via your GSI
-  const batchResponse = await dynamoDB.send(
-    new QueryCommand({
-      TableName: MASTER_TABLE,
-      IndexName: MASTER_INDEX_TABLE,
-      KeyConditionExpression: "#gsi1pk = :pk",
-      FilterExpression: "batchCode = :batchCode",
-      ExpressionAttributeNames: { "#gsi1pk": "GSI1-pKey" },
-      ExpressionAttributeValues: {
-        ":pk": "BATCHES",
-        ":batchCode": batchCode,
-      },
-    })
-  );
-
-  const batch = batchResponse.Items?.[0];
+  const batch = await queryBatchByCode(batchCode);
   if (!batch) {
     return { success: false, message: "Batch not found" };
   }

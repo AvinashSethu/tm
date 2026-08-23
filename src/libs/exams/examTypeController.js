@@ -46,7 +46,17 @@ export async function getAllMockExamByGoalID(goalID) {
   };
 
   try {
-    const { Items = [] } = await dynamoDB.send(new QueryCommand(params));
+    // The EXAMS partition holds every exam in the system; the filter only
+    // applies within each 1MB page, so we must follow LastEvaluatedKey.
+    const Items = [];
+    let ExclusiveStartKey;
+    do {
+      const response = await dynamoDB.send(
+        new QueryCommand({ ...params, ExclusiveStartKey })
+      );
+      Items.push(...(response.Items || []));
+      ExclusiveStartKey = response.LastEvaluatedKey;
+    } while (ExclusiveStartKey);
 
     if (Items.length === 0) {
       return {
@@ -103,7 +113,17 @@ export async function getAllGroupExamsByGoalID(goalID) {
   };
 
   try {
-    const { Items = [] } = await dynamoDB.send(new QueryCommand(params));
+    // Shared EXAM_GROUP partition + FilterExpression: paginate, see above.
+    const Items = [];
+    let ExclusiveStartKey;
+    do {
+      const response = await dynamoDB.send(
+        new QueryCommand({ ...params, ExclusiveStartKey })
+      );
+      Items.push(...(response.Items || []));
+      ExclusiveStartKey = response.LastEvaluatedKey;
+    } while (ExclusiveStartKey);
+
     if (Items.length === 0) {
       return {
         success: true,
@@ -171,7 +191,17 @@ export async function getAllGroupExamsByGroupID(groupID) {
   };
 
   try {
-    const { Items = [] } = await dynamoDB.send(new QueryCommand(params));
+    // Shared EXAMS partition + FilterExpression: paginate, see above.
+    const Items = [];
+    let ExclusiveStartKey;
+    do {
+      const response = await dynamoDB.send(
+        new QueryCommand({ ...params, ExclusiveStartKey })
+      );
+      Items.push(...(response.Items || []));
+      ExclusiveStartKey = response.LastEvaluatedKey;
+    } while (ExclusiveStartKey);
+
     if (Items.length === 0) {
       return {
         success: true,

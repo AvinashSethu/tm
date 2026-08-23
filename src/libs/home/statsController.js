@@ -180,8 +180,18 @@ async function getUserExamAttempts(userID, goalID) {
   };
 
   try {
-    const { Items } = await dynamoDB.send(new QueryCommand(params));
-    return Items || [];
+    // Filter applies within each 1MB page — paginate so attempts aren't
+    // silently dropped once a user's attempt history outgrows one page.
+    const Items = [];
+    let ExclusiveStartKey;
+    do {
+      const response = await dynamoDB.send(
+        new QueryCommand({ ...params, ExclusiveStartKey })
+      );
+      Items.push(...(response.Items || []));
+      ExclusiveStartKey = response.LastEvaluatedKey;
+    } while (ExclusiveStartKey);
+    return Items;
   } catch (error) {
     console.error("Error fetching exam attempts:", error);
     return [];

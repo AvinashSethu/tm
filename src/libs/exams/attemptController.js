@@ -659,7 +659,17 @@ export async function getExamAttemptsByUserID(userID, goalID) {
     params.ExpressionAttributeValues[":goalID"] = goalID;
   }
 
-  const { Items = [] } = await dynamoDB.send(new QueryCommand(params));
+  // Filter applies within each 1MB page — paginate so attempts aren't
+  // silently dropped once a user's attempt history outgrows one page.
+  const Items = [];
+  let ExclusiveStartKey;
+  do {
+    const response = await dynamoDB.send(
+      new QueryCommand({ ...params, ExclusiveStartKey })
+    );
+    Items.push(...(response.Items || []));
+    ExclusiveStartKey = response.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
 
   return {
     success: true,
@@ -672,43 +682,52 @@ export async function getScheduledExamAttemptsByUserID(userID, batchID) {
     throw new Error("userID is required");
   }
 
-  // 1) Query the GSI for this user's exam attempts
-  const { Items = [] } = await dynamoDB.send(
-    new QueryCommand({
-      TableName: USER_TABLE,
-      IndexName: USER_GSI_INDEX,
-      KeyConditionExpression: "#gpk = :pKey AND #gsk = :sKey",
-      FilterExpression: "#type = :type AND #batchID = :batchID",
-      ExpressionAttributeNames: {
-        "#gpk": "GSI1-pKey",
-        "#gsk": "GSI1-sKey",
-        "#type": "type",
-        "#status": "status",
-        "#duration": "duration",
-        "#batchID": "batchID",
-      },
-      ExpressionAttributeValues: {
-        ":pKey": `EXAM_ATTEMPTS`,
-        ":sKey": `EXAM_ATTEMPT@${userID}`,
-        ":type": "scheduled",
-        ":batchID": batchID,
-      },
-      ProjectionExpression: [
-        "pKey",
-        "sKey",
-        "examID",
-        "batchID",
-        "startTimeStamp",
-        "#duration",
-        "#status",
-        "attemptNumber",
-        "obtainedMarks",
-        "totalQuestions",
-        "title",
-        "totalMarks",
-      ].join(", "),
-    })
-  );
+  // 1) Query the GSI for this user's exam attempts — paginated, since the
+  // filter applies within each 1MB page of the user's attempt history.
+  const params = {
+    TableName: USER_TABLE,
+    IndexName: USER_GSI_INDEX,
+    KeyConditionExpression: "#gpk = :pKey AND #gsk = :sKey",
+    FilterExpression: "#type = :type AND #batchID = :batchID",
+    ExpressionAttributeNames: {
+      "#gpk": "GSI1-pKey",
+      "#gsk": "GSI1-sKey",
+      "#type": "type",
+      "#status": "status",
+      "#duration": "duration",
+      "#batchID": "batchID",
+    },
+    ExpressionAttributeValues: {
+      ":pKey": `EXAM_ATTEMPTS`,
+      ":sKey": `EXAM_ATTEMPT@${userID}`,
+      ":type": "scheduled",
+      ":batchID": batchID,
+    },
+    ProjectionExpression: [
+      "pKey",
+      "sKey",
+      "examID",
+      "batchID",
+      "startTimeStamp",
+      "#duration",
+      "#status",
+      "attemptNumber",
+      "obtainedMarks",
+      "totalQuestions",
+      "title",
+      "totalMarks",
+    ].join(", "),
+  };
+
+  const Items = [];
+  let ExclusiveStartKey;
+  do {
+    const response = await dynamoDB.send(
+      new QueryCommand({ ...params, ExclusiveStartKey })
+    );
+    Items.push(...(response.Items || []));
+    ExclusiveStartKey = response.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
 
   // 2) Map into a clean client payload
   const data = Items.map((item) => ({
