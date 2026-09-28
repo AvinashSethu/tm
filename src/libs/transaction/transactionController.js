@@ -80,134 +80,67 @@ export async function verifyPayment({
     throw new Error("Unauthorized: Transaction does not belong to user");
   }
 
-  // Idempotency: if already completed, return success without re-processing
-  if (transaction.status === "completed") {
-    return {
-      success: true,
-      message: "Payment already verified",
-      status: "completed",
-    };
-  }
-
   const payment = await verifyPaymentWithSignature({
     razorpayOrderId,
     razorpayPaymentId,
     razorpaySignature,
   });
 
-  let transactionStatus = "pending";
-  if (payment.status === "captured") {
-    transactionStatus = "completed";
-  } else if (payment.status === "failed" || payment.status === "refunded") {
-    transactionStatus = "failed";
-  }
-
   const now = Date.now();
-  const updateTransactionParams = {
-    TableName: USER_TABLE,
-    Key: {
-      pKey: transaction.pKey,
-      sKey: transaction.sKey,
-    },
-    // Only transition from pending — prevents double-processing if a
-    // concurrent verify/status-check already completed the transaction.
-    ConditionExpression: "#status = :pendingStatus",
-    UpdateExpression:
-      "set paymentDetails = :paymentDetails, #status = :status, updatedAt = :updatedAt",
-    ExpressionAttributeNames: {
-      "#status": "status",
-    },
-    ExpressionAttributeValues: {
-      ":paymentDetails": {
-        razorpayOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
-        method: payment.method,
-        status: payment.status,
-        captured: payment.status === "captured",
-        amount: payment.amount,
-        currency: payment.currency,
-        createdAt: payment.created_at,
-      },
-      ":status": transactionStatus,
-      ":updatedAt": now,
-      ":pendingStatus": "pending",
-    },
+  const paymentDetails = {
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+    method: payment.method,
+    status: payment.status,
+    captured: payment.status === "captured",
+    amount: payment.amount,
+    currency: payment.currency,
+    createdAt: payment.created_at,
   };
 
-  try {
-    await dynamoDB.send(new UpdateCommand(updateTransactionParams));
-  } catch (err) {
-    if (err.name === "ConditionalCheckFailedException") {
-      // Another concurrent request already finalized this transaction —
-      // treat as success to avoid double side effects (already done below).
-      return {
-        success: true,
-        message: "Payment already verified",
-        status: "completed",
-      };
-    }
-    throw err;
+  // Re-running this for an already-completed transaction is safe and also
+  // repairs a purchase whose activation failed on an earlier attempt.
+  if (payment.status === "captured") {
+    await settleCapturedPayment(transaction, paymentDetails, now);
+    return {
+      success: true,
+      message: "Payment verified",
+      status: "completed",
+    };
   }
 
-  if (payment.status === "captured") {
-    const document = transaction.document;
-    const documentDetails = await getDocument(document.pKey, document.sKey);
-    const expiresAt = calculateExpiresAt(
-      documentDetails.plan.duration,
-      documentDetails.plan.type,
-      now
-    );
+  const transactionStatus =
+    payment.status === "failed" || payment.status === "refunded"
+      ? "failed"
+      : "pending";
 
-    const updateCourseEnrollParams = {
-      TableName: USER_TABLE,
-      Key: {
-        pKey: document.pKey,
-        sKey: document.sKey,
-      },
-      UpdateExpression:
-        "set #status = :status, expiresAt = :expiresAt, updatedAt = :updatedAt",
-      ExpressionAttributeNames: {
-        "#status": "status",
-      },
-      ExpressionAttributeValues: {
-        ":status": "active",
-        ":expiresAt": expiresAt,
-        ":updatedAt": now,
-      },
-    };
-    await dynamoDB.send(new UpdateCommand(updateCourseEnrollParams));
-
-    // Update Coupon Analytics
-    if (documentDetails.couponDetails && documentDetails.couponDetails.id) {
-      const couponId = documentDetails.couponDetails.id;
-      const discountAmount =
-        documentDetails.priceBreakdown?.couponDiscount || 0;
-      const salesAmount = documentDetails.priceBreakdown?.totalPrice || 0;
-
-      const updateCouponParams = {
-        TableName: MASTER_TABLE,
-        Key: {
-          pKey: `COUPON#${couponId}`,
-          sKey: "COUPONS",
-        },
+  try {
+    await dynamoDB.send(
+      new UpdateCommand({
+        TableName: USER_TABLE,
+        Key: { pKey: transaction.pKey, sKey: transaction.sKey },
+        ConditionExpression: "#status = :pendingStatus",
         UpdateExpression:
-          "SET redemptionCount = if_not_exists(redemptionCount, :zero) + :inc, totalDiscountGiven = if_not_exists(totalDiscountGiven, :zero) + :discount, totalSalesWithCoupon = if_not_exists(totalSalesWithCoupon, :zero) + :sales",
+          "set paymentDetails = :paymentDetails, #status = :status, updatedAt = :updatedAt",
+        ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":inc": 1,
-          ":discount": discountAmount,
-          ":sales": salesAmount,
-          ":zero": 0,
+          ":paymentDetails": paymentDetails,
+          ":status": transactionStatus,
+          ":updatedAt": now,
+          ":pendingStatus": "pending",
         },
-      };
-
-      try {
-        await dynamoDB.send(new UpdateCommand(updateCouponParams));
-      } catch (e) {
-        console.error("Failed to update coupon analytics:", e);
-        // Don't throw, as payment verification is successful
-      }
-    }
+      })
+    );
+  } catch (err) {
+    if (err.name !== "ConditionalCheckFailedException") throw err;
+    // No longer pending — report the real state instead of assuming success.
+    const current = await getTransaction({ razorpayOrderId });
+    return {
+      success: true,
+      message: `Transaction is ${current.status}`,
+      status: current.status,
+    };
   }
 
   return {
@@ -347,10 +280,58 @@ export async function checkAndUpdateTransactionStatus({
     throw new Error("Unauthorized: Transaction does not belong to user");
   }
 
-  if (
-    transaction.status === "completed" ||
-    transaction.status === "cancelled"
-  ) {
+  const now = Date.now();
+
+  // Completion is only ever recorded after Razorpay reported a captured
+  // payment; make sure the purchase itself was activated too (older code
+  // could mark a transaction completed without activating it).
+  if (transaction.status === "completed") {
+    await grantEntitlement(transaction, now);
+    return {
+      success: true,
+      message: "Transaction already in completed state",
+      status: "completed",
+    };
+  }
+
+  // Razorpay is the source of truth for money: ask it before deciding,
+  // whatever the transaction's age or local status (a UPI payment can
+  // complete after the modal was dismissed and the row was cancelled).
+  const order = await getOrderStatus(razorpayOrderId);
+  let payments = [];
+  if (order.status === "paid") {
+    try {
+      const result = await razorpay.orders.fetchPayments(razorpayOrderId);
+      payments = result.items || []; // newest first
+    } catch (error) {
+      console.error("Error fetching payment status:", error);
+    }
+
+    const captured = payments.find((p) => p.status === "captured");
+    if (captured) {
+      await settleCapturedPayment(
+        transaction,
+        {
+          razorpayOrderId,
+          razorpayPaymentId: captured.id,
+          method: captured.method,
+          status: captured.status,
+          captured: true,
+          amount: captured.amount,
+          currency: captured.currency,
+          createdAt: captured.created_at,
+        },
+        now
+      );
+      return {
+        success: true,
+        message: "Transaction status updated to completed",
+        status: "completed",
+      };
+    }
+  }
+
+  if (transaction.status !== "pending") {
     return {
       success: true,
       message: `Transaction already in ${transaction.status} state`,
@@ -358,43 +339,22 @@ export async function checkAndUpdateTransactionStatus({
     };
   }
 
-  const now = Date.now();
   const timeoutThreshold = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
   const isExpired = now - transaction.createdAt > timeoutThreshold;
+  let newStatus;
 
-  // Check Razorpay order status
-  const order = await getOrderStatus(razorpayOrderId);
-  let newStatus = "pending";
-
-  if (isExpired) {
-    newStatus = "cancelled"; // Cancel if order is expired
-  } else if (order.status === "created" || order.status === "attempted") {
-    newStatus = "pending"; // Keep pending if order is still open
+  if (order.status === "created" || order.status === "attempted") {
+    // Never paid — give up on it only after 24 hours.
+    newStatus = isExpired ? "cancelled" : "pending";
   } else if (order.status === "paid") {
-    // If order is paid, check payment status
-    try {
-      const payments = await razorpay.orders.fetchPayments(razorpayOrderId);
-      if (payments.items && payments.items.length > 0) {
-        const latestPayment = payments.items[0]; // Get the latest payment
-        if (latestPayment.status === "captured") {
-          newStatus = "completed";
-        } else if (
-          latestPayment.status === "failed" ||
-          latestPayment.status === "refunded"
-        ) {
-          newStatus = "failed";
-        } else {
-          newStatus = "pending"; // Other statuses like "authorized" remain pending
-        }
-      } else {
-        newStatus = "pending"; // No payments yet
-      }
-    } catch (error) {
-      console.error("Error fetching payment status:", error);
-      newStatus = "pending"; // Default to pending if payment check fails
-    }
+    // Paid order but no captured payment yet (e.g. only "authorized").
+    const latest = payments[0];
+    newStatus =
+      latest?.status === "failed" || latest?.status === "refunded"
+        ? "failed"
+        : "pending";
   } else {
-    newStatus = "cancelled"; // Any other order status (e.g., expired)
+    newStatus = "cancelled"; // Any other order status
   }
 
   // Update transaction status in DynamoDB if changed — but only if it's
@@ -503,6 +463,110 @@ export async function getUserTransactions({ userID }) {
   } catch (error) {
     console.error("Error fetching user transactions:", error);
     throw new Error(`Failed to fetch transactions: ${error.message}`);
+  }
+}
+
+// Settles a payment Razorpay reports as captured. The purchase is activated
+// BEFORE the transaction is marked completed: if activation fails, the
+// transaction stays open and any retry (verify or status check) finishes the
+// job. Both writes are conditional, so repeats and races are no-ops.
+async function settleCapturedPayment(transaction, paymentDetails, now) {
+  await grantEntitlement(transaction, now);
+  await markTransactionCompleted(transaction, paymentDetails, now);
+}
+
+// Activates the purchased course/subscription row. Rows are created
+// "inactive" with expiresAt = null and only this function activates them,
+// so the condition matches exactly the never-activated rows. Returns true
+// only for the call that actually activated.
+async function grantEntitlement(transaction, now) {
+  const { document } = transaction;
+  const documentDetails = await getDocument(document.pKey, document.sKey);
+  const expiresAt = calculateExpiresAt(
+    documentDetails.plan.duration,
+    documentDetails.plan.type,
+    now
+  );
+
+  try {
+    await dynamoDB.send(
+      new UpdateCommand({
+        TableName: USER_TABLE,
+        Key: { pKey: document.pKey, sKey: document.sKey },
+        ConditionExpression:
+          "#status <> :active AND (attribute_not_exists(expiresAt) OR attribute_type(expiresAt, :nullType))",
+        UpdateExpression:
+          "set #status = :active, expiresAt = :expiresAt, updatedAt = :updatedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":active": "active",
+          ":nullType": "NULL",
+          ":expiresAt": expiresAt,
+          ":updatedAt": now,
+        },
+      })
+    );
+  } catch (err) {
+    if (err.name === "ConditionalCheckFailedException") return false;
+    throw err;
+  }
+
+  await recordCouponRedemption(documentDetails);
+  return true;
+}
+
+async function recordCouponRedemption(documentDetails) {
+  const couponId = documentDetails.couponDetails?.id;
+  if (!couponId) return;
+
+  try {
+    await dynamoDB.send(
+      new UpdateCommand({
+        TableName: MASTER_TABLE,
+        Key: { pKey: `COUPON#${couponId}`, sKey: "COUPONS" },
+        UpdateExpression:
+          "SET redemptionCount = if_not_exists(redemptionCount, :zero) + :inc, totalDiscountGiven = if_not_exists(totalDiscountGiven, :zero) + :discount, totalSalesWithCoupon = if_not_exists(totalSalesWithCoupon, :zero) + :sales",
+        ExpressionAttributeValues: {
+          ":inc": 1,
+          ":discount": documentDetails.priceBreakdown?.couponDiscount || 0,
+          ":sales": documentDetails.priceBreakdown?.totalPrice || 0,
+          ":zero": 0,
+        },
+      })
+    );
+  } catch (e) {
+    // Analytics only — the purchase itself is already activated.
+    console.error("Failed to update coupon analytics:", e);
+  }
+}
+
+// Any non-completed state (pending, cancelled, failed) may move to completed:
+// callers only get here after Razorpay reported a captured payment, e.g. a
+// UPI payment that finished after the checkout modal was dismissed.
+async function markTransactionCompleted(transaction, paymentDetails, now) {
+  const values = {
+    ":completed": "completed",
+    ":updatedAt": now,
+  };
+  let UpdateExpression = "set #status = :completed, updatedAt = :updatedAt";
+  if (paymentDetails) {
+    UpdateExpression += ", paymentDetails = :paymentDetails";
+    values[":paymentDetails"] = paymentDetails;
+  }
+
+  try {
+    await dynamoDB.send(
+      new UpdateCommand({
+        TableName: USER_TABLE,
+        Key: { pKey: transaction.pKey, sKey: transaction.sKey },
+        ConditionExpression: "#status <> :completed",
+        UpdateExpression,
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: values,
+      })
+    );
+  } catch (err) {
+    if (err.name !== "ConditionalCheckFailedException") throw err;
   }
 }
 

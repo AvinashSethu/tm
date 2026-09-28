@@ -64,7 +64,11 @@ export default function Transaction() {
         setTransaction(tx);
         setStatus(tx.status || "failed");
 
-        if (tx.status === "pending" && tx.order?.id) {
+        // Reconcile with Razorpay whatever the stored status: a cancelled
+        // payment can turn out to be paid, and a completed one may still
+        // need its purchase activated.
+        let finalStatus = tx.status;
+        if (tx.order?.id) {
           const checkStatusResponse = await fetch(
             `/api/checkout/course-enroll/check-transaction-status`,
             {
@@ -81,15 +85,13 @@ export default function Transaction() {
 
           const checkStatusData = await checkStatusResponse.json();
           if (checkStatusData.success) {
-            setStatus(checkStatusData.status);
-            setTransaction({ ...tx, status: checkStatusData.status });
-            if (checkStatusData.status === "completed") {
-              update();
-            }
+            finalStatus = checkStatusData.status;
+            setStatus(finalStatus);
+            setTransaction({ ...tx, status: finalStatus });
           }
         }
 
-        if (tx.status === "completed") {
+        if (finalStatus === "completed") {
           update();
         }
       } else {
