@@ -56,7 +56,7 @@ export default function ResponsiveTestSeries({
   const fetchGroupExam = async (groupID) => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/exams/type/${groupID}/group/all-exams`
+        `/api/exams/type/${groupID}/group/all-exams`
       );
       const data = await response.json();
       if (data.success) {

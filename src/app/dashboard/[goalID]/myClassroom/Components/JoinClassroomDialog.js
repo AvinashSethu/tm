@@ -43,7 +43,7 @@ const JoinClassroomDialog = ({
     setLocalLoading(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/my-classroom/get-batch-info`,
+        `/api/my-classroom/get-batch-info`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -74,7 +74,7 @@ const JoinClassroomDialog = ({
     setLocalLoading(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/my-classroom/batch-enroll`,
+        `/api/my-classroom/batch-enroll`,
         {
           method: "POST",
           headers: {

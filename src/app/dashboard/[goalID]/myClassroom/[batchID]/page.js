@@ -34,7 +34,7 @@ export default function Classroom() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/my-classroom/leave-batch`,
+        `/api/my-classroom/leave-batch`,
         {
           method: "POST",
           headers: {
@@ -67,10 +67,10 @@ export default function Classroom() {
     try {
       const [batchRes, examsRes] = await Promise.all([
         fetch(
-          `${process.env.NEXT_PUBLIC_BASE_URL}/api/my-classroom/${batchID}`
+          `/api/my-classroom/${batchID}`
         ),
         fetch(
-          `${process.env.NEXT_PUBLIC_BASE_URL}/api/my-classroom/${batchID}/get-schedule-exam`
+          `/api/my-classroom/${batchID}/get-schedule-exam`
         ),
       ]);
 

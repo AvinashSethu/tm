@@ -78,7 +78,7 @@ export default function Checkout() {
     }
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/course-enroll`,
+        `/api/checkout/course-enroll`,
         {
           method: "POST",
           headers: {
@@ -112,7 +112,7 @@ export default function Checkout() {
     setIsLoading(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/courses`,
+        `/api/courses`,
         {
           method: "POST",
           headers: {
@@ -151,7 +151,7 @@ export default function Checkout() {
   const applyCoupon = async (couponCode) => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/coupon/${couponCode}`,
+        `/api/coupon/${couponCode}`,
         {
           method: "GET",
         }
@@ -224,7 +224,7 @@ export default function Checkout() {
     }
     setIsLoading(true);
     try {
-      const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`;
+      const url = `/api/checkout/billing-info`;
 
       await fetch(url, {
         method: "GET",
@@ -309,7 +309,7 @@ export default function Checkout() {
       const updatedBillingInfo = { ...billingInfo, zip: billingInfo.pin };
       validateBasicBillingInfo(updatedBillingInfo);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`,
+        `/api/checkout/billing-info`,
         {
           method: "POST",
           headers: {
@@ -367,7 +367,7 @@ export default function Checkout() {
       validateBasicBillingInfo(updatedBillingInfo);
 
       await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`,
+        `/api/checkout/billing-info`,
         {
           method: "PUT",
           headers: {
@@ -436,7 +436,7 @@ export default function Checkout() {
     const billingInfoID = billingInfoList[index]?.id;
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`,
+        `/api/checkout/billing-info`,
         {
           method: "DELETE",
           headers: {
@@ -475,7 +475,7 @@ export default function Checkout() {
   const handleEnroll = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/courses/free-course-enroll`,
+        `/api/courses/free-course-enroll`,
         {
           method: "POST",
           headers: {

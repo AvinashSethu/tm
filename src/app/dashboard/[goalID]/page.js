@@ -32,7 +32,7 @@ import CourseCardSkeleton from "@/src/Components/SkeletonCards/CourseCardSkeleto
 import ExamCard from "@/src/Components/ExamCard/ExamCard";
 
 const fetchStats = async (goalID, signal) =>
-  fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/home/stats`, {
+  fetch(`/api/home/stats`, {
     method: "POST",
     body: JSON.stringify({ goalID }),
     signal,

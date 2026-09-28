@@ -20,7 +20,7 @@ export default function GoalsList() {
   const fetchGoal = async () => {
     setIsLoading(true);
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/goal/all`
+      `/api/goal/all`
     );
     const data = await response.json();
     setGoalDetails(data.data);

@@ -20,7 +20,7 @@ export default function TestSeries({ subjectOptions, isPro }) {
   };
   const handleStartTest = async () => {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/exams/type/${goalID}/practice/create`,
+      `/api/exams/type/${goalID}/practice/create`,
       {
         method: "POST",
         body: JSON.stringify({

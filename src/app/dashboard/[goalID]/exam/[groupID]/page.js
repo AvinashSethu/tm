@@ -55,7 +55,7 @@ export default function GroupID() {
   const fetchGroupExam = async () => {
     setLoading(true);
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/exams/type/${groupID}/group/all-exams`
+      `/api/exams/type/${groupID}/group/all-exams`
     );
     const data = await response.json();
     if (data.success) {
@@ -71,7 +71,7 @@ export default function GroupID() {
   const fetchGroupExamData = useCallback(async () => {
     setLoading(true);
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/exams/type/${goalID}/group/get-group`,
+      `/api/exams/type/${goalID}/group/get-group`,
       {
         method: "POST",
         body: JSON.stringify({

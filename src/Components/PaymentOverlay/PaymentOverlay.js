@@ -54,7 +54,7 @@ export default function PaymentOverlay({
         handler: async function (response) {
           try {
             const verifyResponse = await fetch(
-              `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/course-enroll/verify-payment`,
+              `/api/checkout/course-enroll/verify-payment`,
               {
                 method: "POST",
                 headers: {
@@ -94,7 +94,7 @@ export default function PaymentOverlay({
           ondismiss: async function () {
             try {
               const cancelResponse = await fetch(
-                `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/course-enroll/cancel-transaction`,
+                `/api/checkout/course-enroll/cancel-transaction`,
                 {
                   method: "POST",
                   headers: {

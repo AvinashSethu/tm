@@ -44,7 +44,7 @@ export default function Transaction() {
   const fetchTransactionStatus = useCallback(async () => {
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/course-enroll/transaction-status?transactionID=${transactionID}&userID=${userID}`,
+        `/api/checkout/course-enroll/transaction-status?transactionID=${transactionID}&userID=${userID}`,
         {
           method: "GET",
           headers: {
@@ -66,7 +66,7 @@ export default function Transaction() {
 
         if (tx.status === "pending" && tx.order?.id) {
           const checkStatusResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/course-enroll/check-transaction-status`,
+            `/api/checkout/course-enroll/check-transaction-status`,
             {
               method: "POST",
               headers: {
@@ -147,7 +147,7 @@ export default function Transaction() {
 
     try {
       const orderStatusResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/course-enroll/order-status?orderId=${transaction.order.id}`,
+        `/api/checkout/course-enroll/order-status?orderId=${transaction.order.id}`,
         {
           method: "GET",
           headers: {

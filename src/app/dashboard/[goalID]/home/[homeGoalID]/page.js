@@ -36,21 +36,21 @@ import PageSkeleton from "@/src/Components/SkeletonCards/PageSkeleton";
 
 // API helpers
 const fetchGoalDetails = async (goalID, signal) =>
-  fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/home/goal-details`, {
+  fetch(`/api/home/goal-details`, {
     method: "POST",
     body: JSON.stringify({ goalID }),
     signal,
   }).then((res) => res.json());
 
 const fetchBlog = async (goalID, blogID, signal) =>
-  fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/home/get-blog`, {
+  fetch(`/api/home/get-blog`, {
     method: "POST",
     body: JSON.stringify({ goalID, blogID }),
     signal,
   }).then((res) => res.json());
 
 const fetchStats = async (goalID, signal) =>
-  fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/home/stats`, {
+  fetch(`/api/home/stats`, {
     method: "POST",
     body: JSON.stringify({ goalID }),
     signal,

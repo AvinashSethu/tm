@@ -45,7 +45,7 @@ export default function ProSubscription() {
     const fetchPlans = async () => {
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_BASE_URL}/api/subscription/get-all-plans`
+          `/api/subscription/get-all-plans`
         );
         const data = await response.json();
         if (data.success) {
@@ -72,7 +72,7 @@ export default function ProSubscription() {
 
   const applyCoupon = async (couponCode) => {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/coupon/${couponCode}`,
+      `/api/coupon/${couponCode}`,
       {
         method: "GET",
       }
@@ -107,7 +107,7 @@ export default function ProSubscription() {
     }
     setIsLoading(true);
     try {
-      const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`;
+      const url = `/api/checkout/billing-info`;
 
       await fetch(url, {
         method: "GET",
@@ -194,7 +194,7 @@ export default function ProSubscription() {
       const updatedBillingInfo = { ...billingInfo, zip: billingInfo.pin };
       validateBasicBillingInfo(updatedBillingInfo);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`,
+        `/api/checkout/billing-info`,
         {
           method: "POST",
           headers: {
@@ -254,7 +254,7 @@ export default function ProSubscription() {
       validateBasicBillingInfo(updatedBillingInfo);
 
       await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`,
+        `/api/checkout/billing-info`,
         {
           method: "PUT",
           headers: {
@@ -323,7 +323,7 @@ export default function ProSubscription() {
     const billingInfoID = billingInfoList[index]?.id;
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/billing-info`,
+        `/api/checkout/billing-info`,
         {
           method: "DELETE",
           headers: {
@@ -364,7 +364,7 @@ export default function ProSubscription() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/checkout/pro-subscription`,
+        `/api/checkout/pro-subscription`,
         {
           method: "POST",
           headers: {

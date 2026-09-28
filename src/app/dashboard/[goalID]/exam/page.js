@@ -128,7 +128,7 @@ export default function Exams() {
     setIsCreatingPracticeTest(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/exams/type/${goalID}/practice/create`,
+        `/api/exams/type/${goalID}/practice/create`,
         {
           method: "POST",
           body: JSON.stringify({

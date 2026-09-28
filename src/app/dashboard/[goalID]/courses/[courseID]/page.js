@@ -33,7 +33,6 @@ import LessoncardSkeleton from "@/src/Components/SkeletonCards/LessoncardSkeleto
 import Script from "next/script";
 import { useSession } from "next-auth/react";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
 function formatDuration(minutes) {
   if (!minutes || minutes <= 0) return "0m";
@@ -83,7 +82,7 @@ const MyCourse = () => {
   const saveProgressToDB = useCallback(async () => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/courses/analytics/save-progress`,
+        `/api/courses/analytics/save-progress`,
         {
           method: "POST",
           headers: apiHeaders,
@@ -175,25 +174,25 @@ const MyCourse = () => {
     try {
       const [enrollRes, courseRes, lessonsRes, progressRes] = await Promise.all(
         [
-          fetch(`${API_BASE_URL}/api/courses/get-enroll`, {
+          fetch(`/api/courses/get-enroll`, {
             method: "POST",
             headers: apiHeaders,
             body: JSON.stringify({ courseID }),
             credentials: "include",
           }),
-          fetch(`${API_BASE_URL}/api/courses`, {
+          fetch(`/api/courses`, {
             method: "POST",
             headers: apiHeaders,
             body: JSON.stringify({ courseID, goalID }),
             credentials: "include",
           }),
-          fetch(`${API_BASE_URL}/api/courses/lessons`, {
+          fetch(`/api/courses/lessons`, {
             method: "POST",
             headers: apiHeaders,
             body: JSON.stringify({ courseID }),
             credentials: "include",
           }),
-          fetch(`${API_BASE_URL}/api/courses/get-progress`, {
+          fetch(`/api/courses/get-progress`, {
             method: "POST",
             headers: apiHeaders,
             body: JSON.stringify({ courseID }),
@@ -371,7 +370,7 @@ const MyCourse = () => {
     async (lessonID) => {
       try {
         const res = await fetch(
-          `${API_BASE_URL}/api/courses/lessons/get-file-url`,
+          `/api/courses/lessons/get-file-url`,
           {
             method: "POST",
             headers: apiHeaders,
@@ -1161,7 +1160,7 @@ const playVideo = async ({
   setVideoLoading(true);
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/courses/lessons/get-video-url`,
+      `/api/courses/lessons/get-video-url`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
