@@ -6,6 +6,20 @@ const withPWA = withPWAInit({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === "development",
+  // API responses are per-user and can hold personal data, so never cache
+  // them in the browser. Same cacheName replaces next-pwa's default "apis"
+  // rule (NetworkFirst, 24h); worker/index.js clears what it cached.
+  extendDefaultRuntimeCaching: true,
+  workboxOptions: {
+    runtimeCaching: [
+      {
+        urlPattern: ({ sameOrigin, url: { pathname } }) =>
+          sameOrigin && pathname.startsWith("/api/"),
+        handler: "NetworkOnly",
+        options: { cacheName: "apis" },
+      },
+    ],
+  },
 });
 
 const nextConfig = {

@@ -12,9 +12,12 @@ export async function GET() {
         );
       }
 
+      // Never return the raw row: it holds the password hash and OTP/reset
+      // token. Send only the fields the profile screens display.
+      const { name, email, phoneNumber, gender, image } = userProfileData;
       return Response.json({
         success: true,
-        data: userProfileData,
+        data: { name, email, phoneNumber, gender, image },
       });
     } catch (error) {
       return handleError(error);
