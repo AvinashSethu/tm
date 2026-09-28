@@ -4,15 +4,23 @@ import {
   GetCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { normalizeBatchCode } from "@/src/utils/batchCode";
 
 const MASTER_TABLE = `${process.env.AWS_DB_NAME}master`;
 const MASTER_INDEX_TABLE = "masterTableIndex";
 const USER_TABLE = `${process.env.AWS_DB_NAME}users`;
 
-// Paginates the BATCHES partition until the code matches — a FilterExpression
-// only applies within each 1MB page, so a single-page query silently misses
-// batches once the partition outgrows one page.
+// Paginates the BATCHES partition until the code matches — a single-page
+// query silently misses batches once the partition outgrows one 1MB page.
+// Matching happens here rather than in a FilterExpression (which costs the
+// same RCUs) so look-alike characters can be folded: an exact code wins,
+// otherwise a look-alike match is accepted only if it is unambiguous.
 async function queryBatchByCode(batchCode) {
+  const wanted = normalizeBatchCode(batchCode);
+  if (!wanted) return null;
+  const exactCode = batchCode.replace(/\s+/g, "").toUpperCase();
+
+  const lookAlikes = [];
   let ExclusiveStartKey;
   do {
     const batchResponse = await dynamoDB.send(
@@ -20,21 +28,18 @@ async function queryBatchByCode(batchCode) {
         TableName: MASTER_TABLE,
         IndexName: MASTER_INDEX_TABLE,
         KeyConditionExpression: "#gsi1pk = :pk",
-        FilterExpression: "batchCode = :batchCode",
         ExpressionAttributeNames: { "#gsi1pk": "GSI1-pKey" },
-        ExpressionAttributeValues: {
-          ":pk": "BATCHES",
-          ":batchCode": batchCode,
-        },
+        ExpressionAttributeValues: { ":pk": "BATCHES" },
         ExclusiveStartKey,
       })
     );
-    if (batchResponse.Items?.length) {
-      return batchResponse.Items[0];
+    for (const item of batchResponse.Items ?? []) {
+      if (item.batchCode === exactCode) return item;
+      if (normalizeBatchCode(item.batchCode) === wanted) lookAlikes.push(item);
     }
     ExclusiveStartKey = batchResponse.LastEvaluatedKey;
   } while (ExclusiveStartKey);
-  return null;
+  return lookAlikes.length === 1 ? lookAlikes[0] : null;
 }
 
 export async function getBatchByCode(batchCode) {
