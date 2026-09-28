@@ -425,14 +425,19 @@ export async function updateUserPassword({ password, token }) {
   if (!user.emailVerified) {
     throw new Error("Email not verified");
   }
-  if (user.otp.isTokenUsed) {
+  if (user.otp?.isTokenUsed) {
     throw new Error("Token already used");
   }
-  try {
-    if (id !== user.pKey.split("#")[1]) {
-      throw new Error("Invalid token");
-    }
-  } catch (error) {
+  // A valid signature only proves the JWT was signed with JWT_SECRET; it
+  // must also be the exact token issued by OTP verification for this user.
+  const storedToken = Buffer.from(user.otp?.token || "");
+  const providedToken = Buffer.from(token);
+  if (
+    id !== user.pKey.split("#")[1] ||
+    storedToken.length === 0 ||
+    storedToken.length !== providedToken.length ||
+    !timingSafeEqual(storedToken, providedToken)
+  ) {
     throw new Error("Invalid token");
   }
   const hashedPassword = await hashPassword(password);
@@ -450,6 +455,9 @@ export async function updateUserPassword({ password, token }) {
         Key: { pKey: user.pKey, sKey: user.sKey },
         UpdateExpression:
           "set password = :password, otp.isTokenUsed = :isTokenUsed, otp.#tk = :token",
+        // Consume the token atomically so two concurrent submits can't both succeed.
+        ConditionExpression:
+          "otp.#tk = :issuedToken AND otp.isTokenUsed = :notUsed",
         ExpressionAttributeNames: {
           "#tk": "token",
         },
@@ -457,6 +465,8 @@ export async function updateUserPassword({ password, token }) {
           ":password": hashedPassword,
           ":isTokenUsed": true,
           ":token": null,
+          ":issuedToken": token,
+          ":notUsed": false,
         },
       })
     );
@@ -465,6 +475,9 @@ export async function updateUserPassword({ password, token }) {
       message: "Password updated",
     };
   } catch (error) {
+    if (error.name === "ConditionalCheckFailedException") {
+      throw new Error("Token already used");
+    }
     console.error("Error updating user password:", error);
     throw new Error("Failed to update user password");
   }
